@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   LayoutDashboard, 
@@ -267,12 +266,15 @@ const App: React.FC = () => {
 
   const handleFinalPrint = (isPDF: boolean = false) => {
     if (!lastTransactionBatch) return;
-    if (isPDF) { window.alert("💡 另存為 PDF 指引：\n\n點擊確認後，請在印表機目的地選擇「另存為 PDF (Save as PDF)」。"); }
+    if (isPDF) { 
+      window.alert("💡 另存為 PDF 指引：\n\n點擊確認後，請在印表機目的地選擇「另存為 PDF (Save as PDF)」。"); 
+    }
     const date = new Date(lastTransactionBatch.timestamp);
     const isEquip = lastTransactionBatch.items.some(it => it.itemType === 'EQUIPMENT');
     const isConsum = lastTransactionBatch.items.every(it => it.itemType === 'CONSUMABLE') || !isEquip;
     
-    const rows = lastTransactionBatch.items.map(item => `<tr><td style="text-align:center; color:black !important; padding: 12px; border: 1.5px solid black;">${item.name}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.spec || ''}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.unit}</td><td style="text-align:center; font-size:18pt; font-weight:bold; color:black !important; border: 1.5px solid black;">${item.quantity}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.reason}</td></tr>`).join('');
+    // FIX: Access reason from lastTransactionBatch instead of item, as reason is batch-level data
+    const rows = lastTransactionBatch.items.map(item => `<tr><td style="text-align:center; color:black !important; padding: 12px; border: 1.5px solid black;">${item.name}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.spec || ''}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.unit}</td><td style="text-align:center; font-size:18pt; font-weight:bold; color:black !important; border: 1.5px solid black;">${item.quantity}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${lastTransactionBatch.reason}</td></tr>`).join('');
     const emptyRowsCount = Math.max(0, 15 - lastTransactionBatch.items.length);
     const emptyRows = Array(emptyRowsCount).fill('<tr><td style="height:35px; border: 1.5px solid black;">&nbsp;</td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td></tr>').join('');
 
@@ -298,7 +300,7 @@ const App: React.FC = () => {
           <div class="title">台灣電力公司電力修護處南部分處</div>
           <div class="checkbox-area"><div><span class="checkbox">${isEquip ? 'V' : ''}</span>安全衛生設備借用單</div><div><span class="checkbox">${isConsum ? 'V' : ''}</span>安全衛生類消耗品領用單</div></div>
           <div class="dept-row"><div>部 門：<span style="border-bottom: 2px dotted black; min-width: 350px; display: inline-block; text-align: center;">${lastTransactionBatch.dept}</span></div><div>${date.getFullYear() - 1911} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日</div></div>
-          <table><thead><tr><th style="width:35%; color:black !important;">名　　　稱</th><th style="width:25%; color:black !important;">規　範（序　號）</th><th style="width:10%; color:black !important;">單 位</th><th style="width:10%; color:black !important;">數 量</th><th style="width:20%; color:black !important;">備　　註</th></tr></thead><tbody>${rows}${emptyRows}</tbody></table>
+          <table><thead><tr><th style="width:35%; color:black !important;">名　　　稱</th><th style="width:25%; color:black !important;">規　規範（序　號）</th><th style="width:10%; color:black !important;">單 位</th><th style="width:10%; color:black !important;">數 量</th><th style="width:20%; color:black !important;">備　　註</th></tr></thead><tbody>${rows}${emptyRows}</tbody></table>
           <div class="footer-row"><div style="display: flex; justify-content: space-between; color:black !important;"><div style="flex:1">申請部門：</div><div style="flex:1">經管部門：</div></div><div class="sig-area"><div style="flex:1; display:flex; justify-content:space-around; padding: 0 15px; color:black !important;"><span>經辦：</span><span>課長：</span><span>經理：</span></div><div style="flex:1; display:flex; justify-content:space-around; padding: 0 15px; color:black !important;"><span>經辦：</span><span>課長：</span><span>經理：</span></div></div></div>
           <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 600); };</script></body></html>
     `);
@@ -555,7 +557,32 @@ const App: React.FC = () => {
         {(activeTab === 'inventory' || activeTab === 'medicine') && (
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
             <div className="p-6 bg-slate-50 border-b flex items-center justify-between"><div className="relative max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="搜尋項目名稱..." className="w-full pl-12 pr-4 py-3 rounded-xl font-bold text-black border-2 border-slate-300" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
-            <table className="w-full text-left"><thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b"><tr><th className="px-8 py-5">名稱及規格</th><th className="px-8 py-5 text-center">目前庫存</th><th className="px-8 py-5 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{items.filter(i => (activeTab === 'medicine' ? i.itemGroup === 'MEDICINE' : i.itemGroup === 'INVENTORY') && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => (<tr key={item.id} className="hover:bg-slate-50"><td className="px-8 py-5"><div className="font-black text-black">{item.name}</div><div className="flex items-center gap-2 mt-1"><span className={`text-[10px] px-2 py-0.5 rounded font-black border ${item.itemType === 'EQUIPMENT' ? 'text-blue-600 border-blue-200 bg-blue-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>{item.itemType === 'EQUIPMENT' ? '安全衛生設備' : '安全衛生類消耗品'}</span><span className="text-xs text-slate-400 font-bold">{item.spec || '無規格資訊'}</span></div></td><td className="px-8 py-5 text-center"><span className={`px-6 py-2 rounded-xl font-black text-xl border-2 ${item.quantity <= item.minStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{item.quantity} {item.unit}</span></td><td className="px-8 py-5 text-right"><button onClick={() => setEditTarget(item)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit3 size={20}/></button><button onClick={() => setDeleteTarget({id: item.id, name: item.name})} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={20}/></button></td></tr>))}</tbody></table>
+            <table className="w-full text-left"><thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b"><tr><th className="px-8 py-5">名稱及規格</th><th className="px-8 py-5 text-center">目前庫存</th><th className="px-8 py-5 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{items.filter(i => (activeTab === 'medicine' ? i.itemGroup === 'MEDICINE' : i.itemGroup === 'INVENTORY') && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => {
+              const expired = isMedicineExpired(item.expiryDate);
+              const displayDate = formatDateDisplay(item.expiryDate);
+              
+              return (
+                <tr key={item.id} className="hover:bg-slate-50">
+                  <td className="px-8 py-5">
+                    <div className="font-black text-black">{item.name}</div>
+                    <div className="flex flex-col gap-1.5 mt-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-black border ${item.itemType === 'EQUIPMENT' ? 'text-blue-600 border-blue-200 bg-blue-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>{item.itemType === 'EQUIPMENT' ? '安全衛生設備' : '安全衛生類消耗品'}</span>
+                        <span className="text-xs text-slate-400 font-bold">{item.spec || '無規格資訊'}</span>
+                      </div>
+                      {/* 藥材清冊新增效期顯示 */}
+                      {item.itemGroup === 'MEDICINE' && (
+                        <div className={`text-[11px] font-black flex items-center gap-1.5 ${expired ? 'text-red-600' : 'text-emerald-600'}`}>
+                          <Calendar size={12}/> 效期：{displayDate} {expired ? '[已過期]' : '[有效]'}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-center"><span className={`px-6 py-2 rounded-xl font-black text-xl border-2 ${item.quantity <= item.minStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{item.quantity} {item.unit}</span></td>
+                  <td className="px-8 py-5 text-right"><button onClick={() => setEditTarget(item)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit3 size={20}/></button><button onClick={() => setDeleteTarget({id: item.id, name: item.name})} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={20}/></button></td>
+                </tr>
+              );
+            })}</tbody></table>
           </div>
         )}
 
@@ -654,7 +681,13 @@ const App: React.FC = () => {
               <div className="p-8 flex justify-between items-center border-b bg-white relative z-10 shadow-sm">
                 <div className="flex items-center gap-4"><CheckCircle2 className="text-emerald-500" size={40}/><h3 className="font-black text-2xl text-black">領用單據生成預覽</h3></div>
                 <div className="flex gap-4">
-                  <button onClick={() => handleFinalPrint(false)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2"><Printer size={24}/> 直接列印</button>
+                  {/* 恢復：另存為 PDF 按鈕 */}
+                  <button onClick={() => handleFinalPrint(true)} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2">
+                    <FileDown size={24}/> 另存為 PDF
+                  </button>
+                  <button onClick={() => handleFinalPrint(false)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2">
+                    <Printer size={24}/> 直接列印
+                  </button>
                   <button onClick={()=>setShowPrintModal(false)} className="p-4 bg-slate-100 rounded-2xl text-black hover:bg-slate-200"><X size={32}/></button>
                 </div>
               </div>
@@ -664,9 +697,7 @@ const App: React.FC = () => {
                     <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end'}}><div style={{fontSize:'9pt', color:'#666'}}>單號：{lastTransactionBatch.id}</div></div>
                     <h1 style={{textAlign:'center', fontSize:'24pt', fontWeight:'bold', marginBottom:'25px', color: 'black'}}>台灣電力公司電力修護處南部分處</h1>
                     <div style={{display:'flex', justifyContent:'center', gap:'40px', fontSize:'15pt', marginBottom:'25px', fontWeight:'bold', color: 'black'}}>
-                      {/* Fixed typo: justifyCenter -> justifyContent */}
                       <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle', color: 'black'}}>{lastTransactionBatch.items.some(it => it.itemType === 'EQUIPMENT') ? 'V' : ''}</span> 設備借用單</div>
-                      {/* Fixed typo: justifyCenter -> justifyContent */}
                       <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle', color: 'black'}}>{lastTransactionBatch.items.every(it => it.itemType === 'CONSUMABLE') ? 'V' : ''}</span> 消耗品領用單</div>
                     </div>
                     <div style={{display:'flex', justifyContent:'space-between', marginBottom:'15px', fontWeight:'bold', fontSize:'14pt', color: 'black'}}>
