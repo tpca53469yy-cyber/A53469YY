@@ -1,0 +1,5 @@
+{
+  "name": "工安耗材管理系統 (Safety Inventory Pro)",
+  "description": "這是一個專業的工安設備與耗材管理系統，提供資料庫管理、庫存統計及自動化領用單功能，協助企業即時監控工安資源。",
+  "requestFramePermissions": []
+}
