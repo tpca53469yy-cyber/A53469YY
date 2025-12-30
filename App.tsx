@@ -31,7 +31,12 @@ import {
   ExternalLink,
   Info,
   Calendar,
-  List
+  List,
+  ChevronDown,
+  Zap,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -68,6 +73,10 @@ interface BasketItem {
 
 type SyncStatus = 'synced' | 'syncing' | 'error' | 'local';
 
+// 排序類型
+type SortKey = 'name' | 'quantity' | 'expiryDate' | 'lastUpdated';
+type SortOrder = 'asc' | 'desc';
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'inventory' | 'medicine' | 'issuance' | 'history' | 'dashboard'>('inventory');
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -80,6 +89,9 @@ const App: React.FC = () => {
   
   const [aiInsights, setAiInsights] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  // 排序狀態
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; order: SortOrder }>({ key: 'lastUpdated', order: 'desc' });
 
   // 看板篩選器
   const [statsDeptFilter, setStatsDeptFilter] = useState<string>('ALL');
@@ -100,6 +112,12 @@ const App: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string} | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // 領用作業搜尋狀態
+  const [issuanceSearch, setIssuanceSearch] = useState('');
+  const [isIssuanceDropdownOpen, setIsIssuanceDropdownOpen] = useState(false);
+  const issuanceDropdownRef = useRef<HTMLDivElement>(null);
+
   const [issuanceMode, setIssuanceMode] = useState<TransactionType>('OUT');
   const [issuanceGroup, setIssuanceGroup] = useState<ItemGroup>('INVENTORY');
   const [selectedItemId, setSelectedItemId] = useState('');
@@ -121,7 +139,15 @@ const App: React.FC = () => {
       if (gasUrl) { fetchFromCloud(); } else { setSyncStatus('local'); }
     };
     initLoad();
-  }, []);
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (issuanceDropdownRef.current && !issuanceDropdownRef.current.contains(event.target as Node)) {
+        setIsIssuanceDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [gasUrl]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -225,6 +251,63 @@ const App: React.FC = () => {
     return !isNaN(qty) && qty > currentAvailable;
   }, [inputQty, currentAvailable, issuanceMode]);
 
+  // 計算常用品項
+  const frequentItems = useMemo(() => {
+    const counts: Record<string, number> = {};
+    logs.filter(l => l.type === 'OUT').forEach(l => {
+      counts[l.itemId] = (counts[l.itemId] || 0) + 1;
+    });
+    
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id]) => items.find(i => i.id === id))
+      .filter((i): i is InventoryItem => !!i && i.itemGroup === issuanceGroup);
+  }, [logs, items, issuanceGroup]);
+
+  // 領用清單過濾
+  const filteredIssuanceItems = useMemo(() => {
+    return items.filter(i => 
+      i.itemGroup === issuanceGroup && 
+      (i.name.toLowerCase().includes(issuanceSearch.toLowerCase()) || 
+       i.spec.toLowerCase().includes(issuanceSearch.toLowerCase()))
+    );
+  }, [items, issuanceGroup, issuanceSearch]);
+
+  // 排序處理
+  const toggleSort = (key: SortKey) => {
+    setSortConfig(prev => ({
+      key,
+      order: prev.key === key && prev.order === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // 排序過濾後的清單
+  const managedItems = useMemo(() => {
+    const filtered = items.filter(i => 
+      (activeTab === 'medicine' ? i.itemGroup === 'MEDICINE' : i.itemGroup === 'INVENTORY') && 
+      i.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return filtered.sort((a, b) => {
+      let valA: any = a[sortConfig.key] || '';
+      let valB: any = b[sortConfig.key] || '';
+
+      if (sortConfig.key === 'quantity') {
+        valA = Number(valA); valB = Number(valB);
+      } else if (sortConfig.key === 'expiryDate') {
+        valA = valA ? new Date(valA).getTime() : 0;
+        valB = valB ? new Date(valB).getTime() : 0;
+      } else if (typeof valA === 'string') {
+        valA = valA.toLowerCase(); valB = valB.toLowerCase();
+      }
+
+      if (valA < valB) return sortConfig.order === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.order === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [items, activeTab, searchTerm, sortConfig]);
+
   const addToBasket = () => {
     if (!selectedItemId || isQtyOver) return;
     const targetItem = items.find(i => i.id === selectedItemId);
@@ -232,7 +315,7 @@ const App: React.FC = () => {
     const qty = Number(inputQty);
     if (isNaN(qty) || qty <= 0) return;
     setBasket(prev => [...prev, { itemId: targetItem.id, name: targetItem.name, quantity: qty, unit: targetItem.unit, spec: targetItem.spec, itemType: targetItem.itemType }]);
-    setSelectedItemId(''); setInputQty('1');
+    setSelectedItemId(''); setInputQty('1'); setIssuanceSearch('');
   };
 
   const processIssuance = () => {
@@ -260,7 +343,7 @@ const App: React.FC = () => {
         dept: issuanceMode === 'OUT' ? selectedDept : '修護處南部分處', 
         reason: inputReason, 
         timestamp: timestamp,
-        spec: bItem.spec // 儲存規格資訊
+        spec: bItem.spec
       });
     });
 
@@ -285,7 +368,6 @@ const App: React.FC = () => {
     const isEquip = lastTransactionBatch.items.some(it => it.itemType === 'EQUIPMENT');
     const isConsum = lastTransactionBatch.items.every(it => it.itemType === 'CONSUMABLE') || !isEquip;
     
-    // FIX: Access reason from lastTransactionBatch instead of item, as reason is batch-level data
     const rows = lastTransactionBatch.items.map(item => `<tr><td style="text-align:center; color:black !important; padding: 12px; border: 1.5px solid black;">${item.name}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.spec || ''}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${item.unit}</td><td style="text-align:center; font-size:18pt; font-weight:bold; color:black !important; border: 1.5px solid black;">${item.quantity}</td><td style="text-align:center; color:black !important; border: 1.5px solid black;">${lastTransactionBatch.reason}</td></tr>`).join('');
     const emptyRowsCount = Math.max(0, 15 - lastTransactionBatch.items.length);
     const emptyRows = Array(emptyRowsCount).fill('<tr><td style="height:35px; border: 1.5px solid black;">&nbsp;</td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td><td style="border: 1.5px solid black;"></td></tr>').join('');
@@ -378,16 +460,19 @@ const App: React.FC = () => {
     };
   }, [items, logs, statsDeptFilter, statsYearFilter]);
 
-  // 新增：檢查是否過期
   const isMedicineExpired = (dateStr?: string) => {
     if (!dateStr) return false;
     return new Date(dateStr) < new Date();
   };
 
-  // 新增：格式化日期為 年/月/日
   const formatDateDisplay = (dateStr?: string) => {
     if (!dateStr) return '未填';
     return dateStr.replace(/-/g, '/');
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortConfig.key !== column) return <ArrowUpDown size={12} className="text-slate-300 ml-1 opacity-50 group-hover:opacity-100" />;
+    return sortConfig.order === 'asc' ? <ArrowUp size={12} className="text-blue-600 ml-1" /> : <ArrowDown size={12} className="text-blue-600 ml-1" />;
   };
 
   return (
@@ -401,9 +486,7 @@ const App: React.FC = () => {
           opacity: 1; 
           display: block;
           background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>');
-          background-size: contain;
-          width: 20px;
-          height: 20px;
+          background-size: contain; width: 20px; height: 20px;
         }
 
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
@@ -480,14 +563,9 @@ const App: React.FC = () => {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 700 }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 700 }} />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontWeight: 800 }}
-                        cursor={{ fill: '#f8fafc' }}
-                      />
+                      <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontWeight: 800 }} cursor={{ fill: '#f8fafc' }} />
                       <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={40}>
-                        {stats.filtered.chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                        ))}
+                        {stats.filtered.chartData.map((entry, index) => ( <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} /> ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -517,13 +595,7 @@ const App: React.FC = () => {
               <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table className="w-full text-left">
                   <thead className="bg-slate-100 sticky top-0 z-10 text-[10px] font-black text-slate-500 uppercase border-b">
-                    <tr>
-                      <th className="px-6 py-4">時間</th>
-                      <th className="px-6 py-4">品項</th>
-                      <th className="px-6 py-4">部門</th>
-                      <th className="px-6 py-4">人員</th>
-                      <th className="px-6 py-4 text-right">數量</th>
-                    </tr>
+                    <tr><th className="px-6 py-4">時間</th><th className="px-6 py-4">品項</th><th className="px-6 py-4">部門</th><th className="px-6 py-4">人員</th><th className="px-6 py-4 text-right">數量</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {stats.filtered.logs.map(log => (
@@ -540,26 +612,17 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-col gap-6">
-              <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden h-fit group">
-                <div className="absolute top-[-20px] right-[-20px] w-40 h-40 bg-blue-600 rounded-full opacity-20 blur-3xl group-hover:opacity-40 transition-opacity"></div>
-                <h4 className="text-2xl font-black flex items-center gap-3 text-white relative z-10"><BrainCircuit size={28} className="text-blue-400"/> AI 庫存智能分析系統</h4>
-                <p className="mt-2 text-slate-400 font-bold relative z-10">點擊按鈕，讓 Gemini 協助您優化採購計劃與安全建議</p>
-                <button onClick={async () => { setIsAiLoading(true); setAiInsights(await getInventoryInsights(items)); setIsAiLoading(false); }} className="w-full mt-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all relative z-10 flex items-center justify-center gap-3">
-                  {isAiLoading ? <RefreshCw className="animate-spin" size={24}/> : <CheckCircle2 size={24}/>}
-                  {isAiLoading ? '數據掃描中...' : '生成專業庫存分析報告'}
-                </button>
-              </div>
-              
+            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden h-fit group">
+              <div className="absolute top-[-20px] right-[-20px] w-40 h-40 bg-blue-600 rounded-full opacity-20 blur-3xl group-hover:opacity-40 transition-opacity"></div>
+              <h4 className="text-2xl font-black flex items-center gap-3 text-white relative z-10"><BrainCircuit size={28} className="text-blue-400"/> AI 庫存智能分析系統</h4>
+              <p className="mt-2 text-slate-400 font-bold relative z-10">點擊按鈕，讓 Gemini 協助您優化採購計劃與安全建議</p>
+              <button onClick={async () => { setIsAiLoading(true); setAiInsights(await getInventoryInsights(items)); setIsAiLoading(false); }} className="w-full mt-8 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl hover:bg-blue-500 active:scale-95 transition-all relative z-10 flex items-center justify-center gap-3">
+                {isAiLoading ? <RefreshCw className="animate-spin" size={24}/> : <CheckCircle2 size={24}/>}
+                {isAiLoading ? '數據掃描中...' : '生成專業庫存分析報告'}
+              </button>
               {aiInsights && (
-                <div className="bg-white p-1 rounded-[2.5rem] shadow-lg border-2 border-blue-100 overflow-hidden animate-in zoom-in duration-500">
-                  <div className="bg-blue-50/50 p-3 flex items-center justify-between border-b border-blue-100 px-8 py-4">
-                    <span className="text-sm font-black text-blue-600 uppercase tracking-widest">分析報告已生成</span>
-                    <BrainCircuit className="text-blue-500" size={16}/>
-                  </div>
-                  <div className="p-8 text-black text-lg font-bold whitespace-pre-wrap leading-relaxed">
-                    {aiInsights}
-                  </div>
+                <div className="bg-white mt-6 p-8 rounded-[2rem] text-black text-lg font-bold whitespace-pre-wrap leading-relaxed animate-in zoom-in">
+                  {aiInsights}
                 </div>
               )}
             </div>
@@ -568,33 +631,63 @@ const App: React.FC = () => {
 
         {(activeTab === 'inventory' || activeTab === 'medicine') && (
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-            <div className="p-6 bg-slate-50 border-b flex items-center justify-between"><div className="relative max-w-sm w-full"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="搜尋項目名稱..." className="w-full pl-12 pr-4 py-3 rounded-xl font-bold text-black border-2 border-slate-300" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div></div>
-            <table className="w-full text-left"><thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b"><tr><th className="px-8 py-5">名稱及規格</th><th className="px-8 py-5 text-center">目前庫存</th><th className="px-8 py-5 text-right">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{items.filter(i => (activeTab === 'medicine' ? i.itemGroup === 'MEDICINE' : i.itemGroup === 'INVENTORY') && i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(item => {
-              const expired = isMedicineExpired(item.expiryDate);
-              const displayDate = formatDateDisplay(item.expiryDate);
-              
-              return (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-8 py-5">
-                    <div className="font-black text-black">{item.name}</div>
-                    <div className="flex flex-col gap-1.5 mt-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-black border ${item.itemType === 'EQUIPMENT' ? 'text-blue-600 border-blue-200 bg-blue-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>{item.itemType === 'EQUIPMENT' ? '安全衛生設備' : '安全衛生類消耗品'}</span>
-                        <span className="text-xs text-slate-400 font-bold">{item.spec || '無規格資訊'}</span>
-                      </div>
-                      {/* 藥材清冊新增效期顯示 */}
-                      {item.itemGroup === 'MEDICINE' && (
-                        <div className={`text-[11px] font-black flex items-center gap-1.5 ${expired ? 'text-red-600' : 'text-emerald-600'}`}>
-                          <Calendar size={12}/> 效期：{displayDate} {expired ? '[已過期]' : '[有效]'}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-center"><span className={`px-6 py-2 rounded-xl font-black text-xl border-2 ${item.quantity <= item.minStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{item.quantity} {item.unit}</span></td>
-                  <td className="px-8 py-5 text-right"><button onClick={() => setEditTarget(item)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit3 size={20}/></button><button onClick={() => setDeleteTarget({id: item.id, name: item.name})} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={20}/></button></td>
+            <div className="p-6 bg-slate-50 border-b flex items-center justify-between">
+              <div className="relative max-w-sm w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input type="text" placeholder="搜尋項目名稱..." className="w-full pl-12 pr-4 py-3 rounded-xl font-bold text-black border-2 border-slate-300" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
+              <div className="text-xs font-bold text-slate-400">目前顯示：{managedItems.length} 個品項</div>
+            </div>
+            <table className="w-full text-left">
+              <thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b">
+                <tr>
+                  <th className="px-8 py-5 cursor-pointer group hover:bg-slate-200 transition-colors" onClick={() => toggleSort('name')}>
+                    <div className="flex items-center">名稱及規格 <SortIcon column="name" /></div>
+                  </th>
+                  <th className="px-8 py-5 text-center cursor-pointer group hover:bg-slate-200 transition-colors" onClick={() => toggleSort('quantity')}>
+                    <div className="flex items-center justify-center">目前庫存 <SortIcon column="quantity" /></div>
+                  </th>
+                  {activeTab === 'medicine' && (
+                    <th className="px-8 py-5 text-center cursor-pointer group hover:bg-slate-200 transition-colors" onClick={() => toggleSort('expiryDate')}>
+                      <div className="flex items-center justify-center">有效期限 <SortIcon column="expiryDate" /></div>
+                    </th>
+                  )}
+                  <th className="px-8 py-5 text-right">操作</th>
                 </tr>
-              );
-            })}</tbody></table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {managedItems.map(item => {
+                  const expired = isMedicineExpired(item.expiryDate);
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50">
+                      <td className="px-8 py-5">
+                        <div className="font-black text-black">{item.name}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-black border ${item.itemType === 'EQUIPMENT' ? 'text-blue-600 border-blue-200 bg-blue-50' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>{item.itemType === 'EQUIPMENT' ? '設備' : '耗材'}</span>
+                          <span className="text-xs text-slate-400 font-bold">{item.spec || '無規格'}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5 text-center">
+                        <span className={`px-6 py-2 rounded-xl font-black text-xl border-2 ${item.quantity <= item.minStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                          {item.quantity} {item.unit}
+                        </span>
+                      </td>
+                      {activeTab === 'medicine' && (
+                        <td className="px-8 py-5 text-center">
+                          <div className={`text-sm font-black flex items-center justify-center gap-1.5 ${expired ? 'text-red-600' : 'text-emerald-600'}`}>
+                            <Calendar size={14}/> {formatDateDisplay(item.expiryDate)}
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-8 py-5 text-right">
+                        <button onClick={() => setEditTarget(item)} className="p-2 text-slate-400 hover:text-blue-600"><Edit3 size={20}/></button>
+                        <button onClick={() => setDeleteTarget({id: item.id, name: item.name})} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={20}/></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -607,31 +700,83 @@ const App: React.FC = () => {
                 <button onClick={()=>{setIssuanceMode('IN'); setBasket([]);}} className={`flex-1 py-3 rounded-lg font-black transition-all ${issuanceMode==='IN'?'bg-white shadow text-emerald-600':'text-slate-400'}`}>補貨入庫</button>
               </div>
               <div className="space-y-6">
-                <div><label className="text-xs font-black text-slate-500 uppercase tracking-widest">分類</label><div className="flex gap-2 mt-2"><button onClick={()=>setIssuanceGroup('INVENTORY')} className={`flex-1 py-3 rounded-xl font-black border-2 ${issuanceGroup==='INVENTORY'?'bg-blue-50 border-blue-500 text-blue-600':'bg-white border-slate-200 text-slate-400'}`}>耗材類</button><button onClick={()=>setIssuanceGroup('MEDICINE')} className={`flex-1 py-3 rounded-xl font-black border-2 ${issuanceGroup==='MEDICINE'?'bg-emerald-50 border-emerald-500 text-emerald-600':'bg-white border-slate-200 text-slate-400'}`}>藥材類</button></div></div>
-                <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest">品項選擇</label>
-                  <select className="w-full p-4 rounded-xl mt-2 text-lg text-black font-bold" value={selectedItemId} onChange={e=>setSelectedItemId(e.target.value)}>
-                    <option value="">-- 請選擇品項 --</option>
-                    {items.filter(i => i.itemGroup === issuanceGroup).map(i => {
-                      const expired = isMedicineExpired(i.expiryDate);
-                      const displayDate = formatDateDisplay(i.expiryDate);
-                      return (
-                        <option 
-                          key={i.id} 
-                          value={i.id} 
-                          style={{ color: issuanceGroup === 'MEDICINE' ? (expired ? '#ef4444' : '#10b981') : '#000000' }}
-                        >
-                          {i.name} 
-                          {i.spec ? ` [規格: ${i.spec}]` : ''} 
-                          {issuanceGroup === 'MEDICINE' ? ` (${displayDate} ${expired ? '[已過期]' : '[有效]'})` : ''} 
-                          ({issuanceMode === 'OUT' ? `剩餘:${i.quantity - getReservedQty(i.id)}` : `庫存:${i.quantity}`})
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div><label className="text-xs font-black text-slate-500 uppercase tracking-widest">分類</label><div className="flex gap-2 mt-2"><button onClick={()=>{setIssuanceGroup('INVENTORY'); setIssuanceSearch(''); setSelectedItemId('');}} className={`flex-1 py-3 rounded-xl font-black border-2 ${issuanceGroup==='INVENTORY'?'bg-blue-50 border-blue-500 text-blue-600':'bg-white border-slate-200 text-slate-400'}`}>耗材類</button><button onClick={()=>{setIssuanceGroup('MEDICINE'); setIssuanceSearch(''); setSelectedItemId('');}} className={`flex-1 py-3 rounded-xl font-black border-2 ${issuanceGroup==='MEDICINE'?'bg-emerald-50 border-emerald-500 text-emerald-600':'bg-white border-slate-200 text-slate-400'}`}>藥材類</button></div></div>
+                
+                {/* 向上彈出式智慧搜尋器 */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 block">品項選取 (向上展開選單)</label>
+                    <div className="relative" ref={issuanceDropdownRef}>
+                      {isIssuanceDropdownOpen && (
+                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[100] max-h-96 overflow-y-auto custom-scrollbar">
+                          {issuanceSearch === '' && frequentItems.length > 0 && (
+                            <div className="p-2 border-b bg-blue-50/30">
+                              <p className="px-3 py-1 text-[10px] font-black text-blue-600 uppercase flex items-center gap-1"><Zap size={10} fill="currentColor"/> 智慧熱門建議</p>
+                              <div className="grid grid-cols-1 gap-1 mt-1">
+                                {frequentItems.map(item => {
+                                  const remaining = item.quantity - getReservedQty(item.id);
+                                  const isCritical = remaining <= item.minStock || remaining <= 0;
+                                  return (
+                                    <button key={item.id} onClick={() => { setSelectedItemId(item.id); setIssuanceSearch(item.name); setIsIssuanceDropdownOpen(false); }} className="w-full text-left p-3 hover:bg-blue-100 rounded-lg flex justify-between items-center group transition-colors">
+                                      <div><span className="font-black text-slate-900">{item.name}</span><span className="ml-2 text-xs text-slate-400 font-bold">[{item.spec}]</span></div>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded border transition-colors ${isCritical ? 'text-red-600 bg-red-50 border-red-200' : 'text-emerald-600 bg-emerald-50 border-emerald-200'}`}>
+                                          剩餘: {remaining} {item.unit}
+                                        </span>
+                                        <span className="text-[10px] font-black text-blue-600 opacity-0 group-hover:opacity-100">快速選取</span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          <div className="p-1">
+                            {filteredIssuanceItems.length > 0 ? (
+                              filteredIssuanceItems.map(item => {
+                                const remaining = item.quantity - getReservedQty(item.id);
+                                const isCritical = remaining <= item.minStock || remaining <= 0;
+                                return (
+                                  <button key={item.id} onClick={() => { setSelectedItemId(item.id); setIssuanceSearch(item.name); setIsIssuanceDropdownOpen(false); }} className="w-full text-left p-4 hover:bg-slate-50 rounded-xl flex flex-col gap-1 border-b border-slate-50 last:border-0">
+                                    <div className="flex justify-between items-start">
+                                      <span className="font-black text-black text-lg">{item.name}</span>
+                                      <span className={`text-xs font-black px-2 py-0.5 rounded transition-colors ${isCritical ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}`}>
+                                        剩餘: {remaining} {item.unit}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs text-slate-400 font-bold">規格: {item.spec || '無'}</span>
+                                  </button>
+                                );
+                              })
+                            ) : <div className="p-10 text-center text-slate-300 font-bold italic">未找到匹配品項</div>}
+                          </div>
+                        </div>
+                      )}
+                      <div className="relative">
+                        <input type="text" placeholder="搜尋項目名稱..." className="w-full p-4 pr-12 rounded-xl text-lg font-bold border-2" value={selectedItemId ? items.find(i=>i.id===selectedItemId)?.name : issuanceSearch} onChange={(e) => { setIssuanceSearch(e.target.value); setSelectedItemId(''); setIsIssuanceDropdownOpen(true); }} onFocus={() => setIsIssuanceDropdownOpen(true)} />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"><Search size={20}/></div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 常用標籤 */}
+                  {frequentItems.length > 0 && !selectedItemId && (
+                    <div className="flex flex-wrap gap-2">
+                      {frequentItems.map(item => {
+                        const remaining = item.quantity - getReservedQty(item.id);
+                        const isCritical = remaining <= item.minStock || remaining <= 0;
+                        return (
+                          <button key={item.id} onClick={() => { setSelectedItemId(item.id); setIssuanceSearch(item.name); }} className={`px-3 py-1.5 bg-white rounded-full text-xs font-black transition-all shadow-sm border flex items-center gap-1 hover:bg-slate-900 hover:text-white ${isCritical ? 'text-red-600 border-red-200' : 'text-slate-600 border-slate-200'}`}>
+                            <Zap size={10} className={isCritical ? 'text-red-500' : 'text-amber-500'} fill="currentColor"/> {item.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+
                 <div><label className="text-xs font-black text-slate-500 uppercase tracking-widest">數量</label><input type="number" min="1" className="w-full p-4 rounded-xl mt-2 text-xl font-bold" value={inputQty} onChange={e=>setInputQty(e.target.value)}/>{isQtyOver && <p className="text-red-600 text-xs font-black mt-2">⚠️ 超出庫存</p>}</div>
-                <button onClick={addToBasket} disabled={!selectedItemId || isQtyOver} className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-2 shadow-lg ${!selectedItemId || isQtyOver ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white hover:bg-black'}`}><Plus size={20}/> 加入處理清單</button>
+                <button onClick={addToBasket} disabled={!selectedItemId || isQtyOver} className={`w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-2 shadow-lg transition-all ${!selectedItemId || isQtyOver ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white hover:bg-black'}`}><Plus size={20}/> 加入處理清單</button>
               </div>
             </div>
             <div className="lg:col-span-3 bg-white p-8 rounded-3xl shadow-xl border border-slate-200 flex flex-col">
@@ -649,46 +794,18 @@ const App: React.FC = () => {
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
             <table className="w-full text-left">
               <thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b">
-                <tr>
-                  <th className="px-6 py-5">異動時間</th>
-                  <th className="px-6 py-5">狀態</th>
-                  <th className="px-6 py-5">項目 (數量)</th>
-                  <th className="px-6 py-5">規格</th>
-                  <th className="px-6 py-5">部門 / 經手人</th>
-                  <th className="px-6 py-5 text-right">補印單據</th>
-                </tr>
+                <tr><th className="px-6 py-5">異動時間</th><th className="px-6 py-5">狀態</th><th className="px-6 py-5">項目 (數量)</th><th className="px-6 py-5">規格</th><th className="px-6 py-5">部門 / 經手人</th><th className="px-6 py-5 text-right">補印</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {logs.map(log => (
                   <tr key={log.id} className="hover:bg-slate-50">
                     <td className="px-6 py-5 text-xs font-bold text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
-                    <td className="px-6 py-5 font-black">{log.type === 'OUT' ? <span className="flex items-center gap-1 text-blue-600 font-bold"><ArrowUpRight size={14}/> 領用出庫</span> : <span className="flex items-center gap-1 text-emerald-600 font-bold"><ArrowDownLeft size={14}/> 補貨入庫</span>}</td>
+                    <td className="px-6 py-5 font-black">{log.type === 'OUT' ? <span className="text-blue-600 font-bold">領用出庫</span> : <span className="text-emerald-600 font-bold">補貨入庫</span>}</td>
                     <td className="px-6 py-5 font-black text-black">{log.itemName} (x{log.quantity})</td>
                     <td className="px-6 py-5 font-bold text-slate-500">{log.spec || '--'}</td>
                     <td className="px-6 py-5 font-bold text-slate-600">{log.dept} / {log.person}</td>
                     <td className="px-6 py-5 text-right">
-                      {log.type === 'OUT' ? (
-                        <button onClick={()=>{ 
-                          setLastTransactionBatch({
-                            id: log.id, 
-                            dept: log.dept, 
-                            person: log.person, 
-                            reason: log.reason, 
-                            items: [{
-                              itemId: log.itemId, 
-                              name: log.itemName, 
-                              quantity: log.quantity, 
-                              unit: '個', 
-                              spec: log.spec || '', 
-                              itemType: 'CONSUMABLE'
-                            }], 
-                            timestamp: log.timestamp
-                          }); 
-                          setShowPrintModal(true); 
-                        }} className="text-slate-400 hover:text-blue-600">
-                          <Printer size={20}/>
-                        </button>
-                      ) : <span className="text-slate-200">--</span>}
+                      {log.type === 'OUT' ? <button onClick={()=>{ setLastTransactionBatch({ id: log.id, dept: log.dept, person: log.person, reason: log.reason, items: [{ itemId: log.itemId, name: log.itemName, quantity: log.quantity, unit: '個', spec: log.spec || '', itemType: 'CONSUMABLE' }], timestamp: log.timestamp }); setShowPrintModal(true); }} className="text-slate-400 hover:text-blue-600"><Printer size={18}/></button> : '--'}
                     </td>
                   </tr>
                 ))}
@@ -712,21 +829,12 @@ const App: React.FC = () => {
                   <div><label className="text-xs font-black text-slate-500">目前庫存</label><input name="quantity" type="number" required className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.quantity || 0} /></div>
                   <div><label className="text-xs font-black text-slate-500">警戒數量</label><input name="minStock" type="number" required className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.minStock || 5} /></div>
                 </div>
-                
-                {/* 僅在藥材分頁或編輯藥材時顯示日期，工安消耗品隱藏 */}
-                {(activeTab === 'medicine' || editTarget?.itemGroup === 'MEDICINE') && (
+                { (activeTab === 'medicine' || editTarget?.itemGroup === 'MEDICINE') && (
                   <div className="grid grid-cols-2 gap-6 animate-in fade-in">
-                    <div className="relative">
-                      <label className="text-xs font-black text-slate-500 flex items-center gap-1">購入日期 <Calendar size={12}/></label>
-                      <input name="purchaseDate" type="date" className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.purchaseDate} />
-                    </div>
-                    <div className="relative">
-                      <label className="text-xs font-black text-slate-500 flex items-center gap-1">有效日期 <Calendar size={12}/></label>
-                      <input name="expiryDate" type="date" className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.expiryDate} />
-                    </div>
+                    <div><label className="text-xs font-black text-slate-500">購入日期</label><input name="purchaseDate" type="date" className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.purchaseDate} /></div>
+                    <div><label className="text-xs font-black text-slate-500">有效日期</label><input name="expiryDate" type="date" className="w-full p-4 rounded-xl mt-2 font-bold" defaultValue={editTarget?.expiryDate} /></div>
                   </div>
                 )}
-                
                 <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-2xl shadow-xl mt-6">儲存物資</button>
                 <button type="button" onClick={()=>{setEditTarget(null);setShowAddModal(false)}} className="w-full py-3 text-slate-400 font-bold hover:text-black">取消返回</button>
               </form>
@@ -739,62 +847,20 @@ const App: React.FC = () => {
             <div className="bg-white rounded-[3rem] w-full max-w-5xl h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
               <div className="p-8 flex justify-between items-center border-b bg-white relative z-10 shadow-sm">
                 <div className="flex items-center gap-4"><CheckCircle2 className="text-emerald-500" size={40}/><h3 className="font-black text-2xl text-black">領用單據生成預覽</h3></div>
-                <div className="flex gap-4">
-                  {/* 恢復：另存為 PDF 按鈕 */}
-                  <button onClick={() => handleFinalPrint(true)} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2">
-                    <FileDown size={24}/> 另存為 PDF
-                  </button>
-                  <button onClick={() => handleFinalPrint(false)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2">
-                    <Printer size={24}/> 直接列印
-                  </button>
-                  <button onClick={()=>setShowPrintModal(false)} className="p-4 bg-slate-100 rounded-2xl text-black hover:bg-slate-200"><X size={32}/></button>
-                </div>
+                <div className="flex gap-4"><button onClick={() => handleFinalPrint(false)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2"><Printer size={24}/> 直接列印</button><button onClick={()=>setShowPrintModal(false)} className="p-4 bg-slate-100 rounded-2xl text-black hover:bg-slate-200"><X size={32}/></button></div>
               </div>
               <div className="flex-1 bg-slate-100 p-10 overflow-y-auto flex justify-center shadow-inner">
                 <div className="bg-white shadow-2xl p-6 border rounded-sm origin-top mb-10 scale-90">
                   <div style={{width:'210mm', minHeight:'297mm', padding:'40px', color:'black', background:'white'}}>
-                    <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end'}}><div style={{fontSize:'9pt', color:'#666'}}>單號：{lastTransactionBatch.id}</div></div>
-                    <h1 style={{textAlign:'center', fontSize:'24pt', fontWeight:'bold', marginBottom:'25px', color: 'black'}}>台灣電力公司電力修護處南部分處</h1>
-                    <div style={{display:'flex', justifyContent:'center', gap:'40px', fontSize:'15pt', marginBottom:'25px', fontWeight:'bold', color: 'black'}}>
-                      <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle', color: 'black'}}>{lastTransactionBatch.items.some(it => it.itemType === 'EQUIPMENT') ? 'V' : ''}</span> 設備借用單</div>
-                      <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle', color: 'black'}}>{lastTransactionBatch.items.every(it => it.itemType === 'CONSUMABLE') ? 'V' : ''}</span> 消耗品領用單</div>
+                    <h1 style={{textAlign:'center', fontSize:'24pt', fontWeight:'bold', marginBottom:'25px'}}>台灣電力公司電力修護處南部分處</h1>
+                    <div style={{display:'flex', justifyContent:'center', gap:'40px', fontSize:'15pt', marginBottom:'25px', fontWeight:'bold'}}>
+                      <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle'}}>{lastTransactionBatch.items.some(it => it.itemType === 'EQUIPMENT') ? 'V' : ''}</span> 設備借用單</div>
+                      <div><span style={{border:'2.5px solid black', width:'20px', height:'20px', display:'inline-flex', alignItems:'center', justifyContent:'center', marginRight:'8px', verticalAlign:'middle'}}>{lastTransactionBatch.items.every(it => it.itemType === 'CONSUMABLE') ? 'V' : ''}</span> 消耗品領用單</div>
                     </div>
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'15px', fontWeight:'bold', fontSize:'14pt', color: 'black'}}>
-                      <div>部 門：<span style={{borderBottom:'1.5px dotted black', minWidth:'350px', display:'inline-block', textAlign:'center', color: 'black'}}>{lastTransactionBatch.dept}</span></div>
-                      <div>{new Date(lastTransactionBatch.timestamp).getFullYear() - 1911} 年 {new Date(lastTransactionBatch.timestamp).getMonth() + 1} 月 {new Date(lastTransactionBatch.timestamp).getDate()} 日</div>
-                    </div>
-                    <table style={{width:'100%', borderCollapse:'collapse', border:'2px solid black', color: 'black'}}>
-                      <thead>
-                        <tr style={{background:'#f2f2f2'}}>
-                          <th style={{padding:'8px', border:'1.5px solid black', color: 'black'}}>名稱</th>
-                          <th style={{padding:'8px', border:'1.5px solid black', color: 'black'}}>規範</th>
-                          <th style={{padding:'8px', border:'1.5px solid black', color: 'black'}}>單位</th>
-                          <th style={{padding:'8px', border:'1.5px solid black', color: 'black'}}>數量</th>
-                          <th style={{padding:'8px', border:'1.5px solid black', color: 'black'}}>備註</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lastTransactionBatch.items.map((it, i) => (
-                          <tr key={i}>
-                            <td style={{textAlign:'center', padding:'12px', border:'1.5px solid black', color: 'black'}}>{it.name}</td>
-                            <td style={{border:'1.5px solid black', textAlign:'center', color: 'black'}}>{it.spec}</td>
-                            <td style={{border:'1.5px solid black', textAlign:'center', color: 'black'}}>{it.unit}</td>
-                            <td style={{fontWeight:'bold', fontSize:'16pt', border:'1.5px solid black', textAlign:'center', color: 'black'}}>{it.quantity}</td>
-                            <td style={{border:'1.5px solid black', textAlign:'center', color: 'black'}}>{lastTransactionBatch.reason}</td>
-                          </tr>
-                        ))}
-                        {Array(Math.max(0, 15 - lastTransactionBatch.items.length)).fill(0).map((_, i) => (
-                          <tr key={i + 100}><td style={{height:'35px', border:'1.5px solid black'}}>&nbsp;</td><td style={{border:'1.5px solid black'}}></td><td style={{border:'1.5px solid black'}}></td><td style={{border:'1.5px solid black'}}></td><td style={{border:'1.5px solid black'}}></td></tr>
-                        ))}
-                      </tbody>
+                    <table style={{width:'100%', borderCollapse:'collapse', border:'2px solid black'}}>
+                      <thead><tr style={{background:'#f2f2f2'}}><th style={{padding:'8px', border:'1.5px solid black'}}>名稱</th><th style={{padding:'8px', border:'1.5px solid black'}}>規範</th><th style={{padding:'8px', border:'1.5px solid black'}}>數量</th></tr></thead>
+                      <tbody>{lastTransactionBatch.items.map((it, i) => (<tr key={i}><td style={{textAlign:'center', padding:'12px', border:'1.5px solid black'}}>{it.name}</td><td style={{border:'1.5px solid black', textAlign:'center'}}>{it.spec}</td><td style={{fontWeight:'bold', fontSize:'16pt', border:'1.5px solid black', textAlign:'center'}}>{it.quantity}</td></tr>))}</tbody>
                     </table>
-                    <div style={{marginTop:'35px', fontWeight:'bold', fontSize:'13pt', color: 'black'}}>
-                      <div style={{display:'flex', justifyContent:'space-between'}}><div style={{flex:1}}>申請部門：</div><div style={{flex:1}}>經管部門：</div></div>
-                      <div style={{display:'flex', justifyContent:'space-between', marginTop:'45px', fontSize:'12pt', color: 'black'}}>
-                        <div style={{flex:1, display:'flex', justifyContent:'space-around', padding:'0 20px'}}><span>經辦：</span><span>課長：</span><span>經理：</span></div>
-                        <div style={{flex:1, display:'flex', justifyContent:'space-around', padding:'0 20px'}}><span>經辦：</span><span>課長：</span><span>經理：</span></div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -805,12 +871,9 @@ const App: React.FC = () => {
         {showSettings && (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[600] flex items-center justify-center p-4">
             <div className="bg-white rounded-[2.5rem] w-full max-w-xl p-10 shadow-2xl animate-in zoom-in duration-300">
-              <h3 className="text-2xl font-black text-black mb-6">雲端連線同步設定</h3>
-              <input type="text" className="w-full p-4 rounded-xl mt-2 text-black font-bold border-2" placeholder="GAS Web App URL" defaultValue={gasUrl} id="gas-url-input"/>
-              <div className="flex gap-4 mt-8">
-                <button onClick={() => handleGasUrlSave((document.getElementById('gas-url-input') as HTMLInputElement).value)} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl">儲存同步</button>
-                <button onClick={() => setShowSettings(false)} className="px-8 py-5 bg-slate-100 text-slate-600 rounded-2xl font-black text-xl">取消</button>
-              </div>
+              <h3 className="text-2xl font-black text-black mb-6">雲端同步設定</h3>
+              <input type="text" className="w-full p-4 rounded-xl mt-2 text-black font-bold border-2" placeholder="GAS URL" defaultValue={gasUrl} id="gas-url-input"/>
+              <div className="flex gap-4 mt-8"><button onClick={() => handleGasUrlSave((document.getElementById('gas-url-input') as HTMLInputElement).value)} className="flex-1 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl">儲存</button><button onClick={() => setShowSettings(false)} className="px-8 py-5 bg-slate-100 text-slate-600 rounded-2xl font-black text-xl">取消</button></div>
             </div>
           </div>
         )}
