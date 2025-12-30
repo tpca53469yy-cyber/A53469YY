@@ -40,6 +40,7 @@ export interface Transaction {
   dept: string;
   reason: string;
   timestamp: number;
+  spec?: string; // 新增：規格紀錄
 }
 
 export interface DashboardStats {

@@ -250,7 +250,18 @@ const App: React.FC = () => {
         }
         return item;
       });
-      newLogs.push({ id: generateId() + Math.random().toString(36).substr(2, 4), itemId: bItem.itemId, itemName: bItem.name, type: issuanceMode, quantity: bItem.quantity, person: inputPerson || '未填寫', dept: issuanceMode === 'OUT' ? selectedDept : '修護處南部分處', reason: inputReason, timestamp: timestamp });
+      newLogs.push({ 
+        id: generateId() + Math.random().toString(36).substr(2, 4), 
+        itemId: bItem.itemId, 
+        itemName: bItem.name, 
+        type: issuanceMode, 
+        quantity: bItem.quantity, 
+        person: inputPerson || '未填寫', 
+        dept: issuanceMode === 'OUT' ? selectedDept : '修護處南部分處', 
+        reason: inputReason, 
+        timestamp: timestamp,
+        spec: bItem.spec // 儲存規格資訊
+      });
     });
 
     const finalLogs = [...newLogs, ...logs];
@@ -636,7 +647,53 @@ const App: React.FC = () => {
 
         {activeTab === 'history' && (
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
-            <table className="w-full text-left"><thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b"><tr><th className="px-6 py-5">異動時間</th><th className="px-6 py-5">狀態</th><th className="px-6 py-5">項目 (數量)</th><th className="px-6 py-5">部門 / 經手人</th><th className="px-6 py-5 text-right">補印單據</th></tr></thead><tbody className="divide-y divide-slate-100">{logs.map(log => (<tr key={log.id} className="hover:bg-slate-50"><td className="px-6 py-5 text-xs font-bold text-slate-400">{new Date(log.timestamp).toLocaleString()}</td><td className="px-6 py-5 font-black">{log.type === 'OUT' ? <span className="flex items-center gap-1 text-blue-600 font-bold"><ArrowUpRight size={14}/> 領用出庫</span> : <span className="flex items-center gap-1 text-emerald-600 font-bold"><ArrowDownLeft size={14}/> 補貨入庫</span>}</td><td className="px-6 py-5 font-black text-black">{log.itemName} (x{log.quantity})</td><td className="px-6 py-5 font-bold text-slate-600">{log.dept} / {log.person}</td><td className="px-6 py-5 text-right">{log.type === 'OUT' ? <button onClick={()=>{ setLastTransactionBatch({id: log.id, dept: log.dept, person: log.person, reason: log.reason, items: [{itemId: log.itemId, name: log.itemName, quantity: log.quantity, unit: '個', spec: '', itemType: 'CONSUMABLE'}], timestamp: log.timestamp}); setShowPrintModal(true); }} className="text-slate-400 hover:text-blue-600"><Printer size={20}/></button> : <span className="text-slate-200">--</span>}</td></tr>))}</tbody></table>
+            <table className="w-full text-left">
+              <thead className="bg-slate-100 text-[11px] font-black text-slate-500 uppercase border-b">
+                <tr>
+                  <th className="px-6 py-5">異動時間</th>
+                  <th className="px-6 py-5">狀態</th>
+                  <th className="px-6 py-5">項目 (數量)</th>
+                  <th className="px-6 py-5">規格</th>
+                  <th className="px-6 py-5">部門 / 經手人</th>
+                  <th className="px-6 py-5 text-right">補印單據</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {logs.map(log => (
+                  <tr key={log.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-5 text-xs font-bold text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
+                    <td className="px-6 py-5 font-black">{log.type === 'OUT' ? <span className="flex items-center gap-1 text-blue-600 font-bold"><ArrowUpRight size={14}/> 領用出庫</span> : <span className="flex items-center gap-1 text-emerald-600 font-bold"><ArrowDownLeft size={14}/> 補貨入庫</span>}</td>
+                    <td className="px-6 py-5 font-black text-black">{log.itemName} (x{log.quantity})</td>
+                    <td className="px-6 py-5 font-bold text-slate-500">{log.spec || '--'}</td>
+                    <td className="px-6 py-5 font-bold text-slate-600">{log.dept} / {log.person}</td>
+                    <td className="px-6 py-5 text-right">
+                      {log.type === 'OUT' ? (
+                        <button onClick={()=>{ 
+                          setLastTransactionBatch({
+                            id: log.id, 
+                            dept: log.dept, 
+                            person: log.person, 
+                            reason: log.reason, 
+                            items: [{
+                              itemId: log.itemId, 
+                              name: log.itemName, 
+                              quantity: log.quantity, 
+                              unit: '個', 
+                              spec: log.spec || '', 
+                              itemType: 'CONSUMABLE'
+                            }], 
+                            timestamp: log.timestamp
+                          }); 
+                          setShowPrintModal(true); 
+                        }} className="text-slate-400 hover:text-blue-600">
+                          <Printer size={20}/>
+                        </button>
+                      ) : <span className="text-slate-200">--</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
