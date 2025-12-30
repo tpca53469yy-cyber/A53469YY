@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   LayoutDashboard, 
@@ -610,6 +611,7 @@ const App: React.FC = () => {
                           style={{ color: issuanceGroup === 'MEDICINE' ? (expired ? '#ef4444' : '#10b981') : '#000000' }}
                         >
                           {i.name} 
+                          {i.spec ? ` [規格: ${i.spec}]` : ''} 
                           {issuanceGroup === 'MEDICINE' ? ` (${displayDate} ${expired ? '[已過期]' : '[有效]'})` : ''} 
                           ({issuanceMode === 'OUT' ? `剩餘:${i.quantity - getReservedQty(i.id)}` : `庫存:${i.quantity}`})
                         </option>
