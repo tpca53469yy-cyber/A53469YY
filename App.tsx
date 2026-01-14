@@ -390,7 +390,7 @@ const App: React.FC = () => {
             .sig-area { display: flex; justify-content: space-between; margin-top: 45px; font-size: 13pt; color: black !important; }
             @media print { body { padding: 80px 60px; } .no-print { display: none; } }
           </style></head><body>
-          <div style="display: flex; flex-direction: column; align-items: flex-end;"><div style="font-size: 9pt; color: #666;">單號：${lastTransactionBatch.id}</div>${lastTransactionBatch.person ? `<div style="font-size: 9pt; color: #333; margin-top: 2px;">領用人：${lastTransactionBatch.person}</div>` : ''}</div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end;"><div style="font-size: 9pt; color: #94a3b8 !important;">單號：${lastTransactionBatch.id}</div>${lastTransactionBatch.person ? `<div style="font-size: 9pt; color: #94a3b8 !important; margin-top: 2px;">領用人：${lastTransactionBatch.person}</div>` : ''}</div>
           <div class="title">台灣電力公司電力修護處南部分處</div>
           <div class="checkbox-area"><div><span class="checkbox">${isEquip ? 'V' : ''}</span>安全衛生設備借用單</div><div><span class="checkbox">${isConsum ? 'V' : ''}</span>安全衛生類消耗品領用單</div></div>
           <div class="dept-row"><div>部 門：<span style="border-bottom: 2px dotted black; min-width: 350px; display: inline-block; text-align: center;">${lastTransactionBatch.dept}</span></div><div>${date.getFullYear() - 1911} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日</div></div>
@@ -718,7 +718,15 @@ const App: React.FC = () => {
                                   const isCritical = remaining <= item.minStock || remaining <= 0;
                                   return (
                                     <button key={item.id} onClick={() => { setSelectedItemId(item.id); setIssuanceSearch(item.name); setIsIssuanceDropdownOpen(false); }} className="w-full text-left p-3 hover:bg-blue-100 rounded-lg flex justify-between items-center group transition-colors">
-                                      <div><span className="font-black text-slate-900">{item.name}</span><span className="ml-2 text-xs text-slate-400 font-bold">[{item.spec}]</span></div>
+                                      <div>
+                                        <span className="font-black text-slate-900">{item.name}</span>
+                                        <span className="ml-2 text-xs text-slate-400 font-bold">[{item.spec}]</span>
+                                        {item.itemGroup === 'MEDICINE' && item.expiryDate && (
+                                          <span className="ml-2 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                            效期: {item.expiryDate.replace(/-/g, '/')}
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="flex items-center gap-2">
                                         <span className={`text-[10px] font-black px-2 py-0.5 rounded border transition-colors ${isCritical ? 'text-red-600 bg-red-50 border-red-200' : 'text-emerald-600 bg-emerald-50 border-emerald-200'}`}>
                                           剩餘: {remaining} {item.unit}
@@ -739,7 +747,14 @@ const App: React.FC = () => {
                                 return (
                                   <button key={item.id} onClick={() => { setSelectedItemId(item.id); setIssuanceSearch(item.name); setIsIssuanceDropdownOpen(false); }} className="w-full text-left p-4 hover:bg-slate-50 rounded-xl flex flex-col gap-1 border-b border-slate-50 last:border-0">
                                     <div className="flex justify-between items-start">
-                                      <span className="font-black text-black text-lg">{item.name}</span>
+                                      <div className="flex flex-col">
+                                        <span className="font-black text-black text-lg">{item.name}</span>
+                                        {item.itemGroup === 'MEDICINE' && item.expiryDate && (
+                                          <span className="text-[11px] font-bold text-amber-600 mt-0.5">
+                                            有效日期: {item.expiryDate.replace(/-/g, '/')}
+                                          </span>
+                                        )}
+                                      </div>
                                       <span className={`text-xs font-black px-2 py-0.5 rounded transition-colors ${isCritical ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}`}>
                                         剩餘: {remaining} {item.unit}
                                       </span>
@@ -844,7 +859,7 @@ const App: React.FC = () => {
 
         {showPrintModal && lastTransactionBatch && (
           <div className="fixed inset-0 bg-slate-900/95 z-[500] flex flex-col items-center justify-center p-6">
-            <div className="bg-white rounded-[3rem] w-full max-w-5xl h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div className="bg-white rounded-[3rem] w-full max-w-5xl h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in duration-300">
               <div className="p-8 flex justify-between items-center border-b bg-white relative z-10 shadow-sm">
                 <div className="flex items-center gap-4"><CheckCircle2 className="text-emerald-500" size={40}/><h3 className="font-black text-2xl text-black">領用單據生成預覽</h3></div>
                 <div className="flex gap-4"><button onClick={() => handleFinalPrint(false)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xl shadow-xl hover:scale-105 transition-all flex items-center gap-2"><Printer size={24}/> 直接列印</button><button onClick={()=>setShowPrintModal(false)} className="p-4 bg-slate-100 rounded-2xl text-black hover:bg-slate-200"><X size={32}/></button></div>
