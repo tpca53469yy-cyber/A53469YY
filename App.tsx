@@ -332,12 +332,12 @@ const App: React.FC = () => {
               <div class="sig-block">
                 <span>經辦：</span>
                 <span>課長：</span>
-                <span>經理：</span>
+                ${isEquip ? '<span>經理：</span>' : ''}
               </div>
               <div class="sig-block">
                 <span>經辦：</span>
                 <span>課長：</span>
-                <span>經理：</span>
+                ${isEquip ? '<span>經理：</span>' : ''}
               </div>
             </div>
           </div>
