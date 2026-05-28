@@ -403,7 +403,7 @@ const App: React.FC = () => {
 
   const filteredIssuanceItems = useMemo(() => {
     const matched = items.filter(i => i.itemGroup === issuanceGroup && (i.name.toLowerCase().includes(issuanceSearch.toLowerCase()) || i.spec.toLowerCase().includes(issuanceSearch.toLowerCase())));
-    const limit = issuanceGroup === 'MEDICINE' ? 30 : 15;
+    const limit = issuanceGroup === 'MEDICINE' ? 50 : 15;
     return matched.slice(0, limit);
   }, [items, issuanceGroup, issuanceSearch]);
 
