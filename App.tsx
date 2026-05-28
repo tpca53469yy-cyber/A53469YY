@@ -402,7 +402,9 @@ const App: React.FC = () => {
   }, [items, activeTab, searchTerm, sortConfig]);
 
   const filteredIssuanceItems = useMemo(() => {
-    return items.filter(i => i.itemGroup === issuanceGroup && (i.name.toLowerCase().includes(issuanceSearch.toLowerCase()) || i.spec.toLowerCase().includes(issuanceSearch.toLowerCase()))).slice(0, 15);
+    const matched = items.filter(i => i.itemGroup === issuanceGroup && (i.name.toLowerCase().includes(issuanceSearch.toLowerCase()) || i.spec.toLowerCase().includes(issuanceSearch.toLowerCase())));
+    const limit = issuanceGroup === 'MEDICINE' ? 30 : 15;
+    return matched.slice(0, limit);
   }, [items, issuanceGroup, issuanceSearch]);
 
   const frequentItems = useMemo(() => {
