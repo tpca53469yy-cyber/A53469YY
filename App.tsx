@@ -143,31 +143,45 @@ const App: React.FC = () => {
     }
   }, [items, logs, isLoaded]);
 
-  const syncToCloud = async (currentItems: InventoryItem[], currentLogs: Transaction[]) => {
-    if (!gasUrl) return;
-    setSyncStatus('syncing');
-    try {
-      const payload = { items: currentItems, logs: currentLogs, timestamp: Date.now() };
-      await fetch(gasUrl, { method: 'POST', body: JSON.stringify(payload), mode: 'no-cors' });
-      setSyncStatus('synced');
-      setLastSyncTime(new Date().toLocaleString());
-    } catch (err) { setSyncStatus('error'); }
-  };
+  const syncToCloud = async (currentItems, currentLogs) => {
+  if (!gasUrl) return;
+  setSyncStatus('syncing');
+  try {
+    const payload = { items: currentItems, logs: currentLogs, timestamp: Date.now() };
+    const response = await fetch(gasUrl, { method: 'POST', body: JSON.stringify(payload) });
+    const text = await response.text();
+    if (text.startsWith('Error')) {
+      setSyncStatus('error');
+      window.alert('❌ 雲端同步失敗：' + text);
+      return;
+    }
+    setSyncStatus('synced');
+    setLastSyncTime(new Date().toLocaleString());
+  } catch (err) {
+    setSyncStatus('error');
+    window.alert('❌ 雲端同步失敗（網路或連線問題），請檢查網路後重試。');
+  }
+};
 
   const fetchFromCloud = async () => {
-    if (!gasUrl) return;
-    setSyncStatus('syncing');
-    try {
-      const response = await fetch(gasUrl);
-      const data = await response.json();
-      if (data && data.items) {
-        setItems(data.items);
-        setLogs(data.logs || []);
-        setSyncStatus('synced');
-        setLastSyncTime(new Date().toLocaleString());
-      }
-    } catch (err) { setSyncStatus('error'); }
-  };
+  if (!gasUrl) return;
+  setSyncStatus('syncing');
+  try {
+    const response = await fetch(gasUrl);
+    const data = await response.json();
+    if (data && data.error) {
+      setSyncStatus('error');
+      window.alert('❌ 讀取雲端資料失敗：' + data.error);
+      return;
+    }
+    if (data && data.items) {
+      setItems(data.items);
+      setLogs(data.logs || []);
+      setSyncStatus('synced');
+      setLastSyncTime(new Date().toLocaleString());
+    }
+  } catch (err) { setSyncStatus('error'); }
+};
 
   const exportData = () => {
     const data = { items, logs, timestamp: Date.now() };
@@ -459,7 +473,7 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex gap-4 p-6 bg-white rounded-3xl shadow-md border border-slate-200 items-center">
-              <div className="flex items-center gap-2"><span className="text-sm font-black text-slate-400">年度:</span><select value={statsYearFilter} onChange={e => setStatsYearFilter(Number(e.target.value))} className="p-2 rounded-lg font-bold border-2">{[2024, 2025].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+              <div className="flex items-center gap-2"><span className="text-sm font-black text-slate-400">年度:</span><select value={statsYearFilter} onChange={e => setStatsYearFilter(Number(e.target.value))} className="p-2 rounded-lg font-bold border-2">{[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}</select></div>
               <div className="flex items-center gap-2"><span className="text-sm font-black text-slate-400">部門:</span><select value={statsDeptFilter} onChange={e => setStatsDeptFilter(e.target.value)} className="p-2 rounded-lg font-bold border-2"><option value="ALL">所有部門</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
             </div>
 
